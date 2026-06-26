@@ -1,0 +1,6 @@
+[build]
+  command = "cd published-cc-dashboard && npm run build"
+  publish = "published-cc-dashboard/dist"
+
+[build.environment]
+  NODE_VERSION = "20"

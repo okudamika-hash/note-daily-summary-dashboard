@@ -1,0 +1,6 @@
+published-cc-dashboard/dist/
+published-cc-dashboard/.openai/
+published-cc-dashboard/preview-*.png
+published-cc-dashboard/.gitignore
+node_modules/
+.netlify/

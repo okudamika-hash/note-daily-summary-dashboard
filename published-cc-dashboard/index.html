@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>note daily summary dashboard</title>
+  <style>
+    :root {
+      --bg: #f7f5f0;
+      --panel: #fffdf8;
+      --ink: #1f2528;
+      --muted: #657071;
+      --line: #e2ddd2;
+      --accent: #176c5f;
+      --accent-2: #b84f35;
+      --soft: #e9f4ef;
+      --shadow: 0 16px 42px rgba(31, 37, 40, .08);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(23, 108, 95, .045) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(23, 108, 95, .035) 1px, transparent 1px),
+        linear-gradient(180deg, #f7f5f0 0%, #fbfaf6 48%, #f1f6f2 100%);
+      background-size: 34px 34px, 34px 34px, auto;
+      font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, "Segoe UI", sans-serif;
+      line-height: 1.72;
+    }
+
+    .wrap {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 72px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 24px;
+      align-items: end;
+      min-height: 210px;
+      padding: 34px;
+      color: #fff;
+      background:
+        linear-gradient(125deg, rgba(16, 49, 45, .94), rgba(23, 108, 95, .88) 54%, rgba(184, 79, 53, .78)),
+        radial-gradient(circle at 80% 8%, rgba(255,255,255,.26), transparent 28%),
+        linear-gradient(135deg, #123631, #b84f35);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 46px);
+      line-height: 1.14;
+      letter-spacing: 0;
+    }
+
+    .hero p {
+      margin: 12px 0 0;
+      max-width: 720px;
+      color: rgba(255,255,255,.88);
+      font-size: 14px;
+    }
+
+    .badge {
+      min-width: 172px;
+      padding: 14px 16px;
+      border: 1px solid rgba(255,255,255,.24);
+      border-radius: 8px;
+      background: rgba(255,255,255,.12);
+      text-align: right;
+    }
+
+    .badge strong {
+      display: block;
+      font-size: 34px;
+      line-height: 1;
+    }
+
+    .badge span {
+      display: block;
+      margin-top: 6px;
+      color: rgba(255,255,255,.82);
+      font-size: 12px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 18px;
+      margin-top: 18px;
+      align-items: start;
+    }
+
+    .dates {
+      position: sticky;
+      top: 14px;
+      padding: 10px;
+      background: rgba(255, 253, 248, .9);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .dates button {
+      width: 100%;
+      min-height: 42px;
+      margin: 0;
+      padding: 8px 10px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: #4d5959;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .dates button:hover { background: #f0ebe2; color: var(--accent); }
+    .dates button.active { background: var(--accent); color: #fff; }
+
+    .summary {
+      min-height: 520px;
+      padding: 28px;
+      background: rgba(255, 253, 248, .96);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .chip {
+      padding: 3px 9px;
+      border: 1px solid #d7e6de;
+      border-radius: 6px;
+      background: var(--soft);
+      color: #2f6158;
+      font-weight: 700;
+    }
+
+    .content h1,
+    .content h2,
+    .content h3 {
+      margin: 1.35em 0 .35em;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    .content h1 {
+      margin-top: 0;
+      font-size: clamp(24px, 3vw, 34px);
+    }
+
+    .content h2 {
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+      font-size: 21px;
+    }
+
+    .content p,
+    .content li {
+      font-size: 15.5px;
+    }
+
+    .content code {
+      padding: 1px 6px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: #f0ebe2;
+      font-family: Consolas, Menlo, monospace;
+      font-size: .92em;
+    }
+
+    .empty {
+      padding: 20px;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      background: #fffaf2;
+      color: var(--muted);
+    }
+
+    footer {
+      margin-top: 24px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    @media (max-width: 760px) {
+      .wrap { width: min(100% - 24px, 1120px); padding-top: 16px; }
+      .hero { grid-template-columns: 1fr; padding: 26px 22px; }
+      .badge { text-align: left; }
+      .layout { grid-template-columns: 1fr; }
+      .dates { position: static; display: flex; gap: 8px; overflow-x: auto; }
+      .dates button { flex: 0 0 auto; width: auto; white-space: nowrap; }
+      .summary { padding: 20px 16px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <div>
+        <h1>note daily summary dashboard</h1>
+        <p>Google Drive の daily_summary_YYYY-MM-DD.md をビルド時に集約し、日付ごとの実装サマリーとして公開します。</p>
+      </div>
+      <div class="badge">
+        <strong id="summaryCount">0</strong>
+        <span>summaries</span>
+      </div>
+    </section>
+
+    <section class="layout">
+      <nav class="dates" id="dateTabs" aria-label="summary dates"></nav>
+      <article class="summary">
+        <div class="meta" id="meta"></div>
+        <div class="content" id="content">
+          <div class="empty">サマリーを読み込み中です。</div>
+        </div>
+      </article>
+    </section>
+
+    <footer id="builtAt"></footer>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    const tabs = document.getElementById("dateTabs");
+    const content = document.getElementById("content");
+    const meta = document.getElementById("meta");
+    const count = document.getElementById("summaryCount");
+    const builtAt = document.getElementById("builtAt");
+
+    function setActive(manifest, date) {
+      const item = manifest.summaries.find((entry) => entry.date === date) || manifest.summaries[0];
+      if (!item) {
+        content.innerHTML = '<div class="empty">daily_summary_*.md がまだありません。</div>';
+        meta.innerHTML = "";
+        return;
+      }
+
+      document.querySelectorAll(".dates button").forEach((button) => {
+        button.classList.toggle("active", button.dataset.date === item.date);
+      });
+
+      meta.innerHTML = [
+        `<span class="chip">${item.date}</span>`,
+        `<span>${item.fileName}</span>`,
+        item.modifiedTime ? `<span>Drive updated: ${new Date(item.modifiedTime).toLocaleString("ja-JP")}</span>` : ""
+      ].filter(Boolean).join("");
+      content.innerHTML = marked.parse(item.markdown || "");
+      history.replaceState(null, "", `#${item.date}`);
+    }
+
+    async function main() {
+      try {
+        const response = await fetch("./manifest.json", { cache: "no-store" });
+        if (!response.ok) throw new Error(`manifest load failed: ${response.status}`);
+        const manifest = await response.json();
+        count.textContent = manifest.summaries.length;
+        builtAt.textContent = manifest.generatedAt ? `Last built: ${new Date(manifest.generatedAt).toLocaleString("ja-JP")}` : "";
+        tabs.innerHTML = manifest.summaries.map((item) => {
+          return `<button type="button" data-date="${item.date}">${item.date}</button>`;
+        }).join("");
+        tabs.addEventListener("click", (event) => {
+          const button = event.target.closest("button[data-date]");
+          if (button) setActive(manifest, button.dataset.date);
+        });
+        const hashDate = decodeURIComponent(location.hash.replace(/^#/, ""));
+        const initial = manifest.summaries.some((item) => item.date === hashDate) ? hashDate : manifest.latestDate;
+        setActive(manifest, initial);
+      } catch (error) {
+        content.innerHTML = `<div class="empty">manifest.json を読み込めませんでした。ビルドログを確認してください。</div>`;
+        console.error(error);
+      }
+    }
+
+    main();
+  </script>
+</body>
+</html>
