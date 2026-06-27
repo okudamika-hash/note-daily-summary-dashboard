@@ -180,6 +180,7 @@ function buildPostAnalytics({ spreadsheetId, sheetGid, sheetTitle, rows }) {
       spreadsheetId,
       sheetGid,
       sheetTitle,
+      snapshotLabel: "最新値",
       fetchedAt: new Date().toISOString()
     },
     kpis: {

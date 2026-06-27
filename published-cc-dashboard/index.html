@@ -131,6 +131,11 @@
       font-size: 12px;
     }
 
+    .analytics-source strong {
+      color: var(--accent);
+      font-weight: 700;
+    }
+
     .kpis {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -393,12 +398,13 @@
       const kpis = analytics.kpis || {};
       const tables = analytics.tables || {};
       const fetchedAt = source.fetchedAt ? new Date(source.fetchedAt).toLocaleString("ja-JP") : "";
+      const valueLabel = source.snapshotLabel || "最新値";
 
       postAnalytics.innerHTML = `
         <div class="analytics-head">
           <div>
             <h2>📈 投稿分析サマリー</h2>
-            <div class="analytics-source">${source.sheetTitle || "Googleスプレッドシート"}${fetchedAt ? ` / 取得: ${fetchedAt}` : ""}</div>
+            <div class="analytics-source"><strong>${valueLabel}</strong> / ${source.sheetTitle || "Googleスプレッドシート"}${fetchedAt ? ` / 取得: ${fetchedAt}` : ""}</div>
           </div>
         </div>
         <div class="kpis">
