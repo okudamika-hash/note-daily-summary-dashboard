@@ -32,8 +32,24 @@ await writeFile(join(dist, "manifest.json"), `${JSON.stringify(manifest, null, 2
 console.log(`Built ${summaries.length} summaries into dist/manifest.json`);
 
 async function listDailySummaries({ accessToken }) {
+  let files = await queryDriveFiles({
+    accessToken,
+    q: `'${folderId}' in parents and trashed = false and name contains 'daily_summary_'`
+  });
+
+  if (files.length === 0) {
+    files = await queryDriveFiles({
+      accessToken,
+      q: "trashed = false and name contains 'daily_summary_'"
+    });
+  }
+
+  return files.filter((file) => /^daily_summary_\d{4}-\d{2}-\d{2}\.md$/.test(file.name));
+}
+
+async function queryDriveFiles({ accessToken, q }) {
   const params = new URLSearchParams({
-    q: `'${folderId}' in parents and trashed = false and name contains 'daily_summary_'`,
+    q,
     fields: "files(id,name,mimeType,modifiedTime)",
     orderBy: "name desc",
     pageSize: "1000",
@@ -41,7 +57,7 @@ async function listDailySummaries({ accessToken }) {
     includeItemsFromAllDrives: "true"
   });
   const data = await driveFetch(`https://www.googleapis.com/drive/v3/files?${params}`, { accessToken });
-  return (data.files || []).filter((file) => /^daily_summary_\d{4}-\d{2}-\d{2}\.md$/.test(file.name));
+  return data.files || [];
 }
 
 async function fetchSummary({ accessToken, file }) {
@@ -92,18 +108,18 @@ async function getAccessToken() {
   }
 
   const now = Math.floor(Date.now() / 1000);
-  const header = { alg: "RS256", typ: "JWT" };
+  const header = { alg: "RS256", typ: "JWT", kid: credentials.private_key_id };
   const claim = {
     iss: credentials.client_email,
     scope: "https://www.googleapis.com/auth/drive.readonly",
-    aud: "https://oauth2.googleapis.com/token",
+    aud: credentials.token_uri || "https://oauth2.googleapis.com/token",
     exp: now + 3600,
     iat: now
   };
   const unsigned = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(claim))}`;
   const signature = createSign("RSA-SHA256").update(unsigned).sign(credentials.private_key);
 
-  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+  const tokenResponse = await fetch(credentials.token_uri || "https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
