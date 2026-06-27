@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const dist = join(root, "dist");
 const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID || "1whu9GZvS7Jk86spJjD_xfy0rndRbJNZ5";
+const analyticsSpreadsheetId = process.env.POST_ANALYTICS_SPREADSHEET_ID || "1A7TI7X3wz64K049o7KBOi7G8JYyV3kgDFvPu885HyJM";
+const analyticsSheetGid = Number(process.env.POST_ANALYTICS_SHEET_GID || "1702614120");
 
 if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON && !process.env.GOOGLE_SERVICE_ACCOUNT_JSON_B64 && !process.env.GOOGLE_API_KEY) {
   throw new Error("Set GOOGLE_SERVICE_ACCOUNT_JSON_B64 or GOOGLE_SERVICE_ACCOUNT_JSON for private Drive access, or GOOGLE_API_KEY for public Drive files.");
@@ -15,13 +17,17 @@ await mkdir(dist, { recursive: true });
 
 const accessToken = await getAccessToken();
 const files = await listDailySummaries({ accessToken });
-const summaries = await Promise.all(files.map((file) => fetchSummary({ accessToken, file })));
+const [summaries, postAnalytics] = await Promise.all([
+  Promise.all(files.map((file) => fetchSummary({ accessToken, file }))),
+  fetchPostAnalytics({ accessToken })
+]);
 
 summaries.sort((a, b) => b.date.localeCompare(a.date));
 
 const manifest = {
   generatedAt: new Date().toISOString(),
   sourceFolderId: folderId,
+  postAnalytics,
   latestDate: summaries[0]?.date || null,
   summaries
 };
@@ -88,6 +94,199 @@ async function driveFetch(url, { accessToken }) {
   return response.json();
 }
 
+async function fetchPostAnalytics({ accessToken }) {
+  const metadataParams = new URLSearchParams({
+    fields: "sheets(properties(sheetId,title))"
+  });
+  const metadata = await sheetsFetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${analyticsSpreadsheetId}?${metadataParams}`,
+    { accessToken }
+  );
+  const sheet = metadata.sheets
+    ?.map((entry) => entry.properties)
+    .find((properties) => properties.sheetId === analyticsSheetGid);
+
+  if (!sheet?.title) {
+    throw new Error(`Analytics sheet gid ${analyticsSheetGid} was not found in spreadsheet ${analyticsSpreadsheetId}`);
+  }
+
+  const valuesParams = new URLSearchParams({
+    majorDimension: "ROWS",
+    valueRenderOption: "FORMATTED_VALUE"
+  });
+  const range = encodeURIComponent(quoteSheetName(sheet.title));
+  const valuesData = await sheetsFetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${analyticsSpreadsheetId}/values/${range}?${valuesParams}`,
+    { accessToken }
+  );
+
+  return buildPostAnalytics({
+    spreadsheetId: analyticsSpreadsheetId,
+    sheetGid: analyticsSheetGid,
+    sheetTitle: sheet.title,
+    rows: valuesData.values || []
+  });
+}
+
+async function sheetsFetch(url, { accessToken }) {
+  const response = await fetch(withApiKey(url), {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+  });
+  if (!response.ok) {
+    throw new Error(`Google Sheets API failed: ${response.status} ${await response.text()}`);
+  }
+  return response.json();
+}
+
+function buildPostAnalytics({ spreadsheetId, sheetGid, sheetTitle, rows }) {
+  const headerIndex = rows.findIndex((row) => {
+    const normalized = row.map(normalizeHeader);
+    return normalized.includes("pv") && normalized.includes("スキ") && normalized.includes("タイプ");
+  });
+
+  if (headerIndex === -1) {
+    throw new Error(`Analytics source sheet ${sheetTitle} does not contain a post log header row`);
+  }
+
+  const headers = rows[headerIndex].map(normalizeHeader);
+  const indexes = {
+    date: findHeader(headers, ["公開日", "日付"]),
+    day: findHeader(headers, ["曜日"]),
+    title: findHeader(headers, ["タイトル"]),
+    type: findHeader(headers, ["タイプ"]),
+    decoration: findHeader(headers, ["タイトル装飾", "装飾"]),
+    pv: findHeader(headers, ["pv", "PV"]),
+    likes: findHeader(headers, ["スキ", "いいね"]),
+    likeRate: findHeader(headers, ["スキ率", "いいね率"])
+  };
+
+  for (const [key, index] of Object.entries(indexes)) {
+    if (index === -1 && ["day", "type", "decoration", "pv", "likes"].includes(key)) {
+      throw new Error(`Analytics source sheet ${sheetTitle} is missing required column: ${key}`);
+    }
+  }
+
+  const records = rows.slice(headerIndex + 1)
+    .map((row) => toPostRecord(row, indexes))
+    .filter((record) => record && Number.isFinite(record.pv) && Number.isFinite(record.likes));
+
+  const totalPv = records.reduce((sum, record) => sum + record.pv, 0);
+  const totalLikes = records.reduce((sum, record) => sum + record.likes, 0);
+  const overallLikeRate = totalPv > 0 ? totalLikes / totalPv : 0;
+  const overTenPercentCount = records.filter((record) => record.likeRate > 0.1).length;
+
+  return {
+    source: {
+      spreadsheetId,
+      sheetGid,
+      sheetTitle,
+      fetchedAt: new Date().toISOString()
+    },
+    kpis: {
+      totalPv,
+      totalLikes,
+      overallLikeRate,
+      publishedCount: records.length,
+      overTenPercentCount
+    },
+    tables: {
+      byType: groupRecords(records, "type"),
+      byDecoration: groupRecords(records, "decoration"),
+      byDay: groupRecords(records, "day", ["月", "火", "水", "木", "金", "土", "日"])
+    }
+  };
+}
+
+function toPostRecord(row, indexes) {
+  const pv = parseNumber(row[indexes.pv]);
+  const likes = parseNumber(row[indexes.likes]);
+  if (!Number.isFinite(pv) || !Number.isFinite(likes)) return null;
+
+  const explicitRate = indexes.likeRate === -1 ? NaN : parsePercent(row[indexes.likeRate]);
+  return {
+    date: valueAt(row, indexes.date),
+    day: valueAt(row, indexes.day) || "不明",
+    title: valueAt(row, indexes.title),
+    type: valueAt(row, indexes.type) || "不明",
+    decoration: valueAt(row, indexes.decoration) || "不明",
+    pv,
+    likes,
+    likeRate: Number.isFinite(explicitRate) ? explicitRate : (pv > 0 ? likes / pv : 0)
+  };
+}
+
+function groupRecords(records, key, order = null) {
+  const groups = new Map();
+  for (const record of records) {
+    const label = record[key] || "不明";
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(record);
+  }
+
+  const entries = [...groups.entries()].map(([label, group]) => ({
+    label,
+    count: group.length,
+    averageLikeRate: average(group.map((record) => record.likeRate)),
+    averagePv: average(group.map((record) => record.pv)),
+    averageLikes: average(group.map((record) => record.likes))
+  }));
+
+  if (order) {
+    return entries.sort((a, b) => {
+      const aIndex = order.indexOf(a.label);
+      const bIndex = order.indexOf(b.label);
+      if (aIndex === -1 && bIndex === -1) return a.label.localeCompare(b.label, "ja");
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    });
+  }
+
+  return entries;
+}
+
+function average(values) {
+  const usable = values.filter(Number.isFinite);
+  if (usable.length === 0) return 0;
+  return usable.reduce((sum, value) => sum + value, 0) / usable.length;
+}
+
+function findHeader(headers, aliases) {
+  return headers.findIndex((header) => aliases.some((alias) => normalizeHeader(alias) === header));
+}
+
+function normalizeHeader(value) {
+  return String(value || "").replace(/\s+/g, "").trim().toLowerCase();
+}
+
+function valueAt(row, index) {
+  if (index === -1) return "";
+  return String(row[index] || "").trim();
+}
+
+function parseNumber(value) {
+  const normalized = String(value ?? "").replace(/,/g, "").trim();
+  if (!normalized) return NaN;
+  const number = Number(normalized);
+  return Number.isFinite(number) ? number : NaN;
+}
+
+function parsePercent(value) {
+  const normalized = String(value ?? "").replace(/,/g, "").trim();
+  if (!normalized) return NaN;
+  if (normalized.endsWith("%")) {
+    const number = Number(normalized.slice(0, -1));
+    return Number.isFinite(number) ? number / 100 : NaN;
+  }
+  const number = Number(normalized);
+  if (!Number.isFinite(number)) return NaN;
+  return number > 1 ? number / 100 : number;
+}
+
+function quoteSheetName(sheetName) {
+  return `'${String(sheetName).replace(/'/g, "''")}'`;
+}
+
 function withApiKey(url) {
   const apiKey = process.env.GOOGLE_API_KEY;
   if (!apiKey) return url;
@@ -111,7 +310,10 @@ async function getAccessToken() {
   const header = { alg: "RS256", typ: "JWT", kid: credentials.private_key_id };
   const claim = {
     iss: credentials.client_email,
-    scope: "https://www.googleapis.com/auth/drive.readonly",
+    scope: [
+      "https://www.googleapis.com/auth/drive.readonly",
+      "https://www.googleapis.com/auth/spreadsheets.readonly"
+    ].join(" "),
     aud: credentials.token_uri || "https://oauth2.googleapis.com/token",
     exp: now + 3600,
     iat: now

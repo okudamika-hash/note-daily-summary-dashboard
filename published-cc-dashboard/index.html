@@ -98,6 +98,117 @@
       align-items: start;
     }
 
+    .analytics {
+      margin-top: 18px;
+      padding: 24px;
+      background: rgba(255, 253, 248, .96);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .analytics-head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: end;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+
+    .analytics h2,
+    .analytics h3 {
+      margin: 0;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    .analytics h2 { font-size: 22px; }
+    .analytics h3 { font-size: 15px; }
+
+    .analytics-source {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .kpi {
+      min-height: 92px;
+      padding: 14px;
+      border: 1px solid #d7e6de;
+      border-radius: 8px;
+      background: var(--soft);
+    }
+
+    .kpi span {
+      display: block;
+      color: #2f6158;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .kpi strong {
+      display: block;
+      margin-top: 6px;
+      color: var(--ink);
+      font-size: 27px;
+      line-height: 1.15;
+    }
+
+    .analytics-tables {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .analytics-table {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fffaf2;
+    }
+
+    .analytics-table h3 {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      background: #f7f1e6;
+    }
+
+    .table-scroll { overflow-x: auto; }
+
+    .analytics table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .analytics th,
+    .analytics td {
+      padding: 9px 10px;
+      border-bottom: 1px solid #ebe4d8;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .analytics th:first-child,
+    .analytics td:first-child {
+      text-align: left;
+    }
+
+    .analytics tr:last-child td { border-bottom: 0; }
+    .analytics th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
     .dates {
       position: sticky;
       top: 14px;
@@ -206,6 +317,9 @@
       .wrap { width: min(100% - 24px, 1120px); padding-top: 16px; }
       .hero { grid-template-columns: 1fr; padding: 26px 22px; }
       .badge { text-align: left; }
+      .analytics { padding: 20px 16px; }
+      .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .analytics-tables { grid-template-columns: 1fr; }
       .layout { grid-template-columns: 1fr; }
       .dates { position: static; display: flex; gap: 8px; overflow-x: auto; }
       .dates button { flex: 0 0 auto; width: auto; white-space: nowrap; }
@@ -225,6 +339,8 @@
         <span>summaries</span>
       </div>
     </section>
+
+    <section class="analytics" id="postAnalytics" aria-label="投稿分析サマリー"></section>
 
     <section class="layout">
       <nav class="dates" id="dateTabs" aria-label="summary dates"></nav>
@@ -246,6 +362,98 @@
     const meta = document.getElementById("meta");
     const count = document.getElementById("summaryCount");
     const builtAt = document.getElementById("builtAt");
+    const postAnalytics = document.getElementById("postAnalytics");
+
+    const tableTitles = {
+      byType: "タイプ別",
+      byDecoration: "装飾別",
+      byDay: "曜日別"
+    };
+
+    function formatNumber(value, digits = 0) {
+      if (!Number.isFinite(Number(value))) return "-";
+      return Number(value).toLocaleString("ja-JP", {
+        maximumFractionDigits: digits,
+        minimumFractionDigits: digits
+      });
+    }
+
+    function formatPercent(value) {
+      if (!Number.isFinite(Number(value))) return "-";
+      return `${(Number(value) * 100).toFixed(1)}%`;
+    }
+
+    function renderPostAnalytics(analytics) {
+      if (!analytics) {
+        postAnalytics.innerHTML = '<div class="empty">投稿分析データを読み込めませんでした。</div>';
+        return;
+      }
+
+      const source = analytics.source || {};
+      const kpis = analytics.kpis || {};
+      const tables = analytics.tables || {};
+      const fetchedAt = source.fetchedAt ? new Date(source.fetchedAt).toLocaleString("ja-JP") : "";
+
+      postAnalytics.innerHTML = `
+        <div class="analytics-head">
+          <div>
+            <h2>📈 投稿分析サマリー</h2>
+            <div class="analytics-source">${source.sheetTitle || "Googleスプレッドシート"}${fetchedAt ? ` / 取得: ${fetchedAt}` : ""}</div>
+          </div>
+        </div>
+        <div class="kpis">
+          <div class="kpi"><span>累計PV</span><strong>${formatNumber(kpis.totalPv)}</strong></div>
+          <div class="kpi"><span>累計スキ</span><strong>${formatNumber(kpis.totalLikes)}</strong></div>
+          <div class="kpi"><span>全体スキ率</span><strong>${formatPercent(kpis.overallLikeRate)}</strong></div>
+          <div class="kpi"><span>スキ率10%超</span><strong>${formatNumber(kpis.overTenPercentCount)}本</strong></div>
+        </div>
+        <div class="analytics-tables">
+          ${["byType", "byDecoration", "byDay"].map((key) => renderAnalyticsTable(tableTitles[key], tables[key] || [])).join("")}
+        </div>
+      `;
+    }
+
+    function renderAnalyticsTable(title, rows) {
+      return `
+        <section class="analytics-table">
+          <h3>${title}</h3>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>分類</th>
+                  <th>本数</th>
+                  <th>平均スキ率</th>
+                  <th>平均PV</th>
+                  <th>平均スキ</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map((row) => `
+                  <tr>
+                    <td>${escapeHtml(row.label)}</td>
+                    <td>${formatNumber(row.count)}</td>
+                    <td>${formatPercent(row.averageLikeRate)}</td>
+                    <td>${formatNumber(row.averagePv, 1)}</td>
+                    <td>${formatNumber(row.averageLikes, 1)}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      `;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "\"": "&quot;",
+        "'": "&#39;"
+      }[char]));
+    }
 
     function setActive(manifest, date) {
       const item = manifest.summaries.find((entry) => entry.date === date) || manifest.summaries[0];
@@ -275,6 +483,7 @@
         const manifest = await response.json();
         count.textContent = manifest.summaries.length;
         builtAt.textContent = manifest.generatedAt ? `Last built: ${new Date(manifest.generatedAt).toLocaleString("ja-JP")}` : "";
+        renderPostAnalytics(manifest.postAnalytics);
         tabs.innerHTML = manifest.summaries.map((item) => {
           return `<button type="button" data-date="${item.date}">${item.date}</button>`;
         }).join("");
