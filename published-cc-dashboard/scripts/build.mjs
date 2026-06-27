@@ -7,8 +7,8 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const dist = join(root, "dist");
 const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID || "1whu9GZvS7Jk86spJjD_xfy0rndRbJNZ5";
 
-if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON && !process.env.GOOGLE_API_KEY) {
-  throw new Error("Set GOOGLE_SERVICE_ACCOUNT_JSON for private Drive access, or GOOGLE_API_KEY for public Drive files.");
+if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON && !process.env.GOOGLE_SERVICE_ACCOUNT_JSON_B64 && !process.env.GOOGLE_API_KEY) {
+  throw new Error("Set GOOGLE_SERVICE_ACCOUNT_JSON_B64 or GOOGLE_SERVICE_ACCOUNT_JSON for private Drive access, or GOOGLE_API_KEY for public Drive files.");
 }
 
 await mkdir(dist, { recursive: true });
@@ -81,7 +81,9 @@ function withApiKey(url) {
 }
 
 async function getAccessToken() {
-  const rawJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const rawJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_B64
+    ? Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_JSON_B64, "base64").toString("utf8")
+    : process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!rawJson) return null;
 
   const credentials = JSON.parse(rawJson);
