@@ -138,20 +138,28 @@ async function fetchPostAnalyticsFromSheetsApi({ accessToken }) {
 }
 
 async function fetchPostAnalyticsFromCsvExport({ accessToken }) {
-  const exportUrl = `https://docs.google.com/spreadsheets/d/${analyticsSpreadsheetId}/export?format=csv&gid=${analyticsSheetGid}`;
-  const response = await fetch(exportUrl, {
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
-  });
-  if (!response.ok) {
-    throw new Error(`Google Sheets CSV export failed: ${response.status} ${await response.text()}`);
+  const urls = [
+    `https://www.googleapis.com/drive/v3/files/${analyticsSpreadsheetId}/export?mimeType=${encodeURIComponent("text/csv")}&supportsAllDrives=true`,
+    `https://docs.google.com/spreadsheets/d/${analyticsSpreadsheetId}/export?format=csv&gid=${analyticsSheetGid}`
+  ];
+  const errors = [];
+
+  for (const exportUrl of urls) {
+    const response = await fetch(exportUrl, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+    });
+    if (response.ok) {
+      return buildPostAnalytics({
+        spreadsheetId: analyticsSpreadsheetId,
+        sheetGid: analyticsSheetGid,
+        sheetTitle: `gid ${analyticsSheetGid}`,
+        rows: parseCsvRows(await response.text())
+      });
+    }
+    errors.push(`${response.status} ${await response.text()}`);
   }
 
-  return buildPostAnalytics({
-    spreadsheetId: analyticsSpreadsheetId,
-    sheetGid: analyticsSheetGid,
-    sheetTitle: `gid ${analyticsSheetGid}`,
-    rows: parseCsvRows(await response.text())
-  });
+  throw new Error(`Google Sheets CSV export failed: ${errors.join(" / ")}`);
 }
 
 async function safeFetchPostAnalytics({ accessToken }) {
