@@ -95,6 +95,15 @@ async function driveFetch(url, { accessToken }) {
 }
 
 async function fetchPostAnalytics({ accessToken }) {
+  try {
+    return await fetchPostAnalyticsFromCsvExport({ accessToken });
+  } catch (csvError) {
+    console.warn(`Google Sheets CSV export failed, trying Sheets API: ${csvError.message}`);
+    return await fetchPostAnalyticsFromSheetsApi({ accessToken });
+  }
+}
+
+async function fetchPostAnalyticsFromSheetsApi({ accessToken }) {
   const metadataParams = new URLSearchParams({
     fields: "sheets(properties(sheetId,title))"
   });
@@ -128,6 +137,23 @@ async function fetchPostAnalytics({ accessToken }) {
   });
 }
 
+async function fetchPostAnalyticsFromCsvExport({ accessToken }) {
+  const exportUrl = `https://docs.google.com/spreadsheets/d/${analyticsSpreadsheetId}/export?format=csv&gid=${analyticsSheetGid}`;
+  const response = await fetch(exportUrl, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+  });
+  if (!response.ok) {
+    throw new Error(`Google Sheets CSV export failed: ${response.status} ${await response.text()}`);
+  }
+
+  return buildPostAnalytics({
+    spreadsheetId: analyticsSpreadsheetId,
+    sheetGid: analyticsSheetGid,
+    sheetTitle: `gid ${analyticsSheetGid}`,
+    rows: parseCsvRows(await response.text())
+  });
+}
+
 async function safeFetchPostAnalytics({ accessToken }) {
   try {
     return await fetchPostAnalytics({ accessToken });
@@ -150,6 +176,51 @@ async function safeFetchPostAnalytics({ accessToken }) {
       }
     };
   }
+}
+
+function parseCsvRows(csv) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < csv.length; index += 1) {
+    const char = csv[index];
+    const next = csv[index + 1];
+
+    if (inQuotes) {
+      if (char === '"' && next === '"') {
+        field += '"';
+        index += 1;
+      } else if (char === '"') {
+        inQuotes = false;
+      } else {
+        field += char;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = true;
+    } else if (char === ",") {
+      row.push(field);
+      field = "";
+    } else if (char === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else if (char !== "\r") {
+      field += char;
+    }
+  }
+
+  if (field || row.length) {
+    row.push(field);
+    rows.push(row);
+  }
+
+  return rows;
 }
 
 async function sheetsFetch(url, { accessToken }) {
