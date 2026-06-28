@@ -141,7 +141,7 @@ async function sheetsFetch(url, { accessToken }) {
 function buildPostAnalytics({ spreadsheetId, sheetGid, sheetTitle, rows }) {
   const headerIndex = rows.findIndex((row) => {
     const normalized = row.map(normalizeHeader);
-    return normalized.includes("pv") && normalized.includes("スキ") && normalized.includes("タイプ");
+    return normalized.includes("pv") && normalized.includes("スキ") && normalized.includes("タイトル");
   });
 
   if (headerIndex === -1) {
@@ -162,7 +162,7 @@ function buildPostAnalytics({ spreadsheetId, sheetGid, sheetTitle, rows }) {
   };
 
   for (const [key, index] of Object.entries(indexes)) {
-    if (index === -1 && ["day", "type", "decoration", "pv", "likes"].includes(key)) {
+    if (index === -1 && ["date", "title", "pv", "likes"].includes(key)) {
       throw new Error(`Analytics source sheet ${sheetTitle} is missing required column: ${key}`);
     }
   }
