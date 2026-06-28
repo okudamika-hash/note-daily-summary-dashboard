@@ -157,7 +157,8 @@ function buildPostAnalytics({ spreadsheetId, sheetGid, sheetTitle, rows }) {
     decoration: findHeader(headers, ["タイトル装飾", "装飾"]),
     pv: findHeader(headers, ["pv", "PV"]),
     likes: findHeader(headers, ["スキ", "いいね"]),
-    likeRate: findHeader(headers, ["スキ率", "いいね率"])
+    likeRate: findHeader(headers, ["スキ率", "いいね率"]),
+    comments: findHeader(headers, ["コメント", "コメント数"])
   };
 
   for (const [key, index] of Object.entries(indexes)) {
@@ -193,7 +194,8 @@ function buildPostAnalytics({ spreadsheetId, sheetGid, sheetTitle, rows }) {
     tables: {
       byType: groupRecords(records, "type"),
       byDecoration: groupRecords(records, "decoration"),
-      byDay: groupRecords(records, "day", ["月", "火", "水", "木", "金", "土", "日"])
+      byDay: groupRecords(records, "day", ["月", "火", "水", "木", "金", "土", "日"]),
+      byTitleDaily: buildTitleDailyRows(records)
     }
   };
 }
@@ -212,8 +214,50 @@ function toPostRecord(row, indexes) {
     decoration: valueAt(row, indexes.decoration) || "不明",
     pv,
     likes,
-    likeRate: Number.isFinite(explicitRate) ? explicitRate : (pv > 0 ? likes / pv : 0)
+    likeRate: Number.isFinite(explicitRate) ? explicitRate : (pv > 0 ? likes / pv : 0),
+    comments: indexes.comments === -1 ? 0 : parseNumber(row[indexes.comments]) || 0
   };
+}
+
+function buildTitleDailyRows(records) {
+  const groups = new Map();
+  for (const record of records) {
+    const title = record.title || "無題";
+    if (!groups.has(title)) groups.set(title, []);
+    groups.get(title).push(record);
+  }
+
+  return [...groups.entries()]
+    .map(([title, group]) => {
+      const sorted = [...group].sort(compareRecordsByDateDesc);
+      const latest = sorted[0];
+      const previous = sorted[1] || null;
+      return {
+        date: latest.date,
+        title,
+        pv: latest.pv,
+        pvDelta: previous ? latest.pv - previous.pv : null,
+        likes: latest.likes,
+        likesDelta: previous ? latest.likes - previous.likes : null,
+        likeRate: latest.likeRate,
+        likeRateDelta: previous ? latest.likeRate - previous.likeRate : null,
+        comments: latest.comments,
+        commentsDelta: previous ? latest.comments - previous.comments : null,
+        previousDate: previous?.date || null
+      };
+    })
+    .sort((a, b) => b.likeRate - a.likeRate || b.pv - a.pv || a.title.localeCompare(b.title, "ja"));
+}
+
+function compareRecordsByDateDesc(a, b) {
+  return dateSortValue(b.date) - dateSortValue(a.date);
+}
+
+function dateSortValue(value) {
+  const normalized = String(value || "").trim().replace(/[./]/g, "-");
+  const match = normalized.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (!match) return 0;
+  return Number(`${match[1]}${match[2].padStart(2, "0")}${match[3].padStart(2, "0")}`);
 }
 
 function groupRecords(records, key, order = null) {

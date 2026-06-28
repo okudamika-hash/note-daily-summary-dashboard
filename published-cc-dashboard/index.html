@@ -214,6 +214,66 @@
       font-weight: 700;
     }
 
+    .title-daily {
+      margin-top: 18px;
+    }
+
+    .title-daily-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .title-daily-controls label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .title-daily-controls select {
+      min-height: 36px;
+      padding: 6px 34px 6px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fffaf2;
+      color: var(--ink);
+      font: inherit;
+      font-size: 13px;
+    }
+
+    .title-daily-table table {
+      min-width: 820px;
+    }
+
+    .title-daily-table th:nth-child(2),
+    .title-daily-table td:nth-child(2) {
+      text-align: left;
+    }
+
+    .title-cell {
+      max-width: 360px;
+      white-space: normal;
+      line-height: 1.45;
+    }
+
+    .delta {
+      display: inline-block;
+      margin-left: 5px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .delta.up { color: var(--accent); }
+    .delta.down { color: var(--accent-2); }
+
+    .title-daily-table tr.is-goal {
+      background: #e7f5ed;
+    }
+
+    .title-daily-table tr.is-goal td:first-child {
+      border-left: 4px solid var(--accent);
+    }
+
     .dates {
       position: sticky;
       top: 14px;
@@ -325,6 +385,7 @@
       .analytics { padding: 20px 16px; }
       .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .analytics-tables { grid-template-columns: 1fr; }
+      .title-daily-controls { width: 100%; justify-content: space-between; }
       .layout { grid-template-columns: 1fr; }
       .dates { position: static; display: flex; gap: 8px; overflow-x: auto; }
       .dates button { flex: 0 0 auto; width: auto; white-space: nowrap; }
@@ -357,6 +418,8 @@
       </article>
     </section>
 
+    <section class="analytics title-daily" id="titleDaily" aria-label="タイトル別・日次数値の一覧表"></section>
+
     <footer id="builtAt"></footer>
   </main>
 
@@ -368,6 +431,7 @@
     const count = document.getElementById("summaryCount");
     const builtAt = document.getElementById("builtAt");
     const postAnalytics = document.getElementById("postAnalytics");
+    const titleDaily = document.getElementById("titleDaily");
 
     const tableTitles = {
       byType: "タイプ別",
@@ -417,6 +481,84 @@
           ${["byType", "byDecoration", "byDay"].map((key) => renderAnalyticsTable(tableTitles[key], tables[key] || [])).join("")}
         </div>
       `;
+    }
+
+    function renderTitleDailyTable(analytics, sortKey = "likeRate") {
+      const rows = analytics?.tables?.byTitleDaily || [];
+      if (!rows.length) {
+        titleDaily.innerHTML = '<div class="empty">タイトル別の日次数値を読み込めませんでした。</div>';
+        return;
+      }
+
+      const sortedRows = sortTitleRows(rows, sortKey);
+      titleDaily.innerHTML = `
+        <div class="analytics-head">
+          <div>
+            <h2>タイトル別・日次数値の一覧表</h2>
+            <div class="analytics-source">最新値と前回取得値との差分 / スキ率10%超をハイライト</div>
+          </div>
+          <div class="title-daily-controls">
+            <label for="titleDailySort">並び順</label>
+            <select id="titleDailySort">
+              <option value="likeRate"${sortKey === "likeRate" ? " selected" : ""}>スキ率が高い順</option>
+              <option value="pv"${sortKey === "pv" ? " selected" : ""}>PVが多い順</option>
+              <option value="likes"${sortKey === "likes" ? " selected" : ""}>スキが多い順</option>
+              <option value="date"${sortKey === "date" ? " selected" : ""}>日付が新しい順</option>
+              <option value="comments"${sortKey === "comments" ? " selected" : ""}>コメントが多い順</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-scroll title-daily-table">
+          <table>
+            <thead>
+              <tr>
+                <th>日付</th>
+                <th>タイトル</th>
+                <th>PV</th>
+                <th>スキ</th>
+                <th>スキ率</th>
+                <th>コメント</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${sortedRows.map((row) => `
+                <tr class="${row.likeRate > 0.1 ? "is-goal" : ""}">
+                  <td>${escapeHtml(row.date || "-")}</td>
+                  <td class="title-cell">${escapeHtml(row.title || "無題")}</td>
+                  <td>${formatNumber(row.pv)}${renderDelta(row.pvDelta, formatNumber)}</td>
+                  <td>${formatNumber(row.likes)}${renderDelta(row.likesDelta, formatNumber)}</td>
+                  <td>${formatPercent(row.likeRate)}${renderDelta(row.likeRateDelta, formatPercent, true)}</td>
+                  <td>${formatNumber(row.comments)}${renderDelta(row.commentsDelta, formatNumber)}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      document.getElementById("titleDailySort")?.addEventListener("change", (event) => {
+        renderTitleDailyTable(analytics, event.target.value);
+      });
+    }
+
+    function sortTitleRows(rows, sortKey) {
+      return [...rows].sort((a, b) => {
+        if (sortKey === "date") return dateSortValue(b.date) - dateSortValue(a.date) || b.likeRate - a.likeRate;
+        return Number(b[sortKey] || 0) - Number(a[sortKey] || 0) || b.likeRate - a.likeRate || a.title.localeCompare(b.title, "ja");
+      });
+    }
+
+    function dateSortValue(value) {
+      const match = String(value || "").replace(/[./]/g, "-").match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+      return match ? Number(`${match[1]}${match[2].padStart(2, "0")}${match[3].padStart(2, "0")}`) : 0;
+    }
+
+    function renderDelta(value, formatter, signedPercent = false) {
+      if (!Number.isFinite(Number(value))) return "";
+      const number = Number(value);
+      if (number === 0) return `<span class="delta">±${signedPercent ? formatter(0) : "0"}</span>`;
+      const formatted = formatter(Math.abs(number));
+      return `<span class="delta ${number > 0 ? "up" : "down"}">${number > 0 ? "+" : "-"}${formatted}</span>`;
     }
 
     function renderAnalyticsTable(title, rows) {
@@ -490,6 +632,7 @@
         count.textContent = manifest.summaries.length;
         builtAt.textContent = manifest.generatedAt ? `Last built: ${new Date(manifest.generatedAt).toLocaleString("ja-JP")}` : "";
         renderPostAnalytics(manifest.postAnalytics);
+        renderTitleDailyTable(manifest.postAnalytics);
         tabs.innerHTML = manifest.summaries.map((item) => {
           return `<button type="button" data-date="${item.date}">${item.date}</button>`;
         }).join("");
