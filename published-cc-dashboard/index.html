@@ -486,7 +486,17 @@
     function renderTitleDailyTable(analytics, sortKey = "likeRate") {
       const rows = analytics?.tables?.byTitleDaily || [];
       if (!rows.length) {
-        titleDaily.innerHTML = '<div class="empty">タイトル別の日次数値を読み込めませんでした。</div>';
+        const sourceError = analytics?.source?.error ? `<div class="analytics-source">取得エラー: ${escapeHtml(analytics.source.error)}</div>` : "";
+        titleDaily.innerHTML = `
+          <div class="analytics-head">
+            <div>
+              <h2>タイトル別・日次数値の一覧表</h2>
+              <div class="analytics-source">最新値と前回取得値との差分 / スキ率10%超をハイライト</div>
+              ${sourceError}
+            </div>
+          </div>
+          <div class="empty">タイトル別の日次数値を読み込めませんでした。</div>
+        `;
         return;
       }
 

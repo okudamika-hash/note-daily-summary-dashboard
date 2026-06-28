@@ -19,7 +19,7 @@ const accessToken = await getAccessToken();
 const files = await listDailySummaries({ accessToken });
 const [summaries, postAnalytics] = await Promise.all([
   Promise.all(files.map((file) => fetchSummary({ accessToken, file }))),
-  fetchPostAnalytics({ accessToken })
+  safeFetchPostAnalytics({ accessToken })
 ]);
 
 summaries.sort((a, b) => b.date.localeCompare(a.date));
@@ -126,6 +126,30 @@ async function fetchPostAnalytics({ accessToken }) {
     sheetTitle: sheet.title,
     rows: valuesData.values || []
   });
+}
+
+async function safeFetchPostAnalytics({ accessToken }) {
+  try {
+    return await fetchPostAnalytics({ accessToken });
+  } catch (error) {
+    console.warn(`Post analytics source could not be loaded: ${error.message}`);
+    return {
+      source: {
+        spreadsheetId: analyticsSpreadsheetId,
+        sheetGid: analyticsSheetGid,
+        snapshotLabel: "最新値",
+        fetchedAt: new Date().toISOString(),
+        error: error.message
+      },
+      kpis: {},
+      tables: {
+        byType: [],
+        byDecoration: [],
+        byDay: [],
+        byTitleDaily: []
+      }
+    };
+  }
 }
 
 async function sheetsFetch(url, { accessToken }) {
