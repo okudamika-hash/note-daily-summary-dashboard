@@ -95,11 +95,26 @@ async function driveFetch(url, { accessToken }) {
 }
 
 async function fetchPostAnalytics({ accessToken }) {
+  const errors = [];
   try {
     return await fetchPostAnalyticsFromCsvExport({ accessToken });
   } catch (csvError) {
+    errors.push(csvError.message);
     console.warn(`Google Sheets CSV export failed, trying Sheets API: ${csvError.message}`);
+  }
+
+  try {
+    return await fetchPostAnalyticsFromDriveLogs({ accessToken });
+  } catch (driveLogError) {
+    errors.push(driveLogError.message);
+    console.warn(`Drive metrics log lookup failed, trying Sheets API: ${driveLogError.message}`);
+  }
+
+  try {
     return await fetchPostAnalyticsFromSheetsApi({ accessToken });
+  } catch (sheetsError) {
+    errors.push(sheetsError.message);
+    throw new Error(errors.join(" / "));
   }
 }
 
@@ -160,6 +175,70 @@ async function fetchPostAnalyticsFromCsvExport({ accessToken }) {
   }
 
   throw new Error(`Google Sheets CSV export failed: ${errors.join(" / ")}`);
+}
+
+async function fetchPostAnalyticsFromDriveLogs({ accessToken }) {
+  const files = await queryDriveFiles({
+    accessToken,
+    q: `'${folderId}' in parents and trashed = false and (name contains 'metrics' or name contains 'metric' or name contains 'analytics' or name contains 'log' or name contains '投稿')`
+  });
+  const candidates = files
+    .filter((file) => !/^daily_summary_\d{4}-\d{2}-\d{2}\.md$/.test(file.name))
+    .sort((a, b) => String(b.modifiedTime || "").localeCompare(String(a.modifiedTime || "")));
+
+  const errors = [];
+  for (const file of candidates) {
+    try {
+      const rows = await fetchDriveTableRows({ accessToken, file });
+      const analytics = buildPostAnalytics({
+        spreadsheetId: file.id,
+        sheetGid: analyticsSheetGid,
+        sheetTitle: `Drive log: ${file.name}`,
+        rows
+      });
+      if (analytics.kpis.publishedCount > 0) return analytics;
+      errors.push(`${file.name}: no usable rows`);
+    } catch (error) {
+      errors.push(`${file.name}: ${error.message}`);
+    }
+  }
+
+  throw new Error(errors.length ? errors.join(" / ") : "No Drive metrics log candidates were found");
+}
+
+async function fetchDriveTableRows({ accessToken, file }) {
+  let text;
+  if (file.mimeType === "application/vnd.google-apps.spreadsheet") {
+    const url = `https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=${encodeURIComponent("text/csv")}&supportsAllDrives=true`;
+    const response = await fetch(url, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+    });
+    if (!response.ok) throw new Error(`export failed: ${response.status} ${await response.text()}`);
+    text = await response.text();
+  } else {
+    const url = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&supportsAllDrives=true`;
+    const response = await fetch(url, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+    });
+    if (!response.ok) throw new Error(`download failed: ${response.status} ${await response.text()}`);
+    text = await response.text();
+  }
+
+  if (/\.json$/i.test(file.name) || file.mimeType === "application/json") {
+    return jsonToRows(JSON.parse(text));
+  }
+  if (/\.tsv$/i.test(file.name)) {
+    return text.split(/\r?\n/).filter(Boolean).map((line) => line.split("\t"));
+  }
+  return parseCsvRows(text);
+}
+
+function jsonToRows(data) {
+  const rows = Array.isArray(data) ? data : (Array.isArray(data?.rows) ? data.rows : []);
+  if (rows.length === 0) return [];
+  if (Array.isArray(rows[0])) return rows;
+  const headers = Object.keys(rows[0]);
+  return [headers, ...rows.map((row) => headers.map((header) => row[header]))];
 }
 
 async function safeFetchPostAnalytics({ accessToken }) {
